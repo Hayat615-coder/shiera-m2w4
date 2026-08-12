@@ -13,6 +13,14 @@ const searchBtn = document.getElementById("search-btn");
 const daySelector = document.getElementById("day-selector");
 const container = document.getElementById("hourly-container");
 const content = document.getElementById("content");
+
+if (daySelector) {
+  daySelector.addEventListener("change", () => {
+    if (state.weatherData) {
+      hourlyForecastDaySelector(state.weatherData);
+    }
+  });
+}
 const loader = document.getElementById("loader");
 const main = document.getElementById("main");
 const currentCity = document.getElementById("currentCity");
@@ -165,26 +173,40 @@ switchBtn.addEventListener("click", () => {
 });
 
 async function getGeoData() {
-  let search = "";
-  showLoading();
-  const url = `https://nominatim.openstreetmap.org/search?q=${search}&format=jsonv2&addressdetails=1`;
+  const defaultLocation = "Berlin, Germany";
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(defaultLocation)}&format=jsonv2&addressdetails=1`;
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: { "User-Agent": "WeatherApp/1.0" },
+    });
     if (!response.ok) {
       throw new Error(`Response status: ${response.status}`);
     }
 
     const result = await response.json();
-    console.log(result);
-    let locationName = result[0].address;
-    loadLocationData(locationName, result.timezone);
-    let lat = result[0].lat;
-    let lon = result[0].lon;
+    if (!result || result.length === 0) {
+      throw new Error("Default location not found");
+    }
 
-    getWeatherData(lat, lon, locationName);
+    const locationAddress = result[0].address;
+    const lat = result[0].lat;
+    const lon = result[0].lon;
+
+    state.location = {
+      name:
+        locationAddress.city ||
+        locationAddress.town ||
+        locationAddress.village ||
+        locationAddress.state ||
+        defaultLocation,
+      country: locationAddress.country || "",
+      lat,
+      lon,
+    };
+
+    await getWeatherData(lat, lon, locationAddress);
   } catch (error) {
     console.error(error.message);
-  } finally {
     hideLoading();
   }
 }
@@ -208,8 +230,14 @@ function hideLoading() {
 }
 
 function loadLocationData(locationName, timezone = "UTC") {
-  cityName = locationName.state;
-  countryName = locationName.country;
+  const cityName =
+    locationName.city ||
+    locationName.town ||
+    locationName.village ||
+    locationName.state ||
+    locationName.county ||
+    "Unknown Location";
+  const countryName = locationName.country || "";
 
   let dateOptions = {
     weekday: "long",
@@ -245,8 +273,10 @@ async function getWeatherData(lat, lon, locationName) {
     }
 
     const result = await response.json();
+    state.weatherData = result;
     // update location display using timezone returned by API (fallback to UTC)
     loadLocationData(locationName, result.timezone);
+    hourlyForecastDaySelector(result);
 
     loadHourlyForecast(result);
     loadDailyForecast(result);
@@ -345,20 +375,24 @@ function getWeatherFileName(code) {
 
   return "icon-0.webp";
 }
-function loadHourlyIcon(weather) {
+function loadHourlyIcon(weather, startIndex = 0) {
   const hourlyIcons = (weather.hourly && weather.hourly.weather_code) || [];
   const imgs = document.querySelectorAll("#hourly-container ul li img");
   const count = Math.min(imgs.length, hourlyIcons.length, 8);
   for (let i = 0; i < count; i++) {
+    const dataIndex = startIndex + i * 3;
     if (imgs[i])
-      imgs[i].src = `./assets/images/${getWeatherFileName(hourlyIcons[i])}`;
+      imgs[i].src =
+        `./assets/images/${getWeatherFileName(hourlyIcons[dataIndex])}`;
   }
 }
-function loadHourlyTemp(weather) {
+function loadHourlyTemp(weather, startIndex = 0) {
   console.log(weather);
+
   let hourlyTemp = weather.hourly.temperature_2m;
   for (let i = 0; i < 8; i++) {
-    const tempObj = Math.round(hourlyTemp[i]);
+    const dataIndex = startIndex + i * 3;
+    const tempObj = Math.round(hourlyTemp[dataIndex]);
     const temp = document.getElementById(`temp_${i + 1}`);
     if (temp) {
       temp.textContent = tempObj;
@@ -366,11 +400,12 @@ function loadHourlyTemp(weather) {
   }
   console.log(hourlyTemp);
 }
-function loadHourlyForecast(weather) {
+function loadHourlyForecast(weather, startIndex = 0) {
   console.log(weather);
   let hours = weather.hourly.time;
   for (let i = 0; i < 8; i++) {
-    const dateObj = new Date(hours[i]);
+    const dataIndex = startIndex + i * 3;
+    const dateObj = new Date(hours[dataIndex]);
     const hr = dateObj.toLocaleTimeString("en-US", {
       hour: "numeric",
       hour12: true,
@@ -380,6 +415,46 @@ function loadHourlyForecast(weather) {
       times.innerText = hr;
     }
   }
+}
+
+function hourlyForecastDaySelector(weather, day) {
+  console.log(weather);
+  const selectedDay = (
+    day ||
+    document.getElementById("day-selector")?.value ||
+    ""
+  ).toLowerCase();
+  let dayIndex = 0;
+  switch (selectedDay) {
+    case "monday":
+      dayIndex = 0;
+      break;
+    case "tuesday":
+      dayIndex = 1;
+      break;
+    case "wednesday":
+      dayIndex = 2;
+      break;
+    case "thursday":
+      dayIndex = 3;
+      break;
+    case "friday":
+      dayIndex = 4;
+      break;
+    case "saturday":
+      dayIndex = 5;
+      break;
+    case "sunday":
+      dayIndex = 6;
+      break;
+    default:
+      dayIndex = 0;
+      break;
+  }
+  const startIndex = dayIndex * 24;
+  loadHourlyIcon(weather, startIndex);
+  loadHourlyForecast(weather, startIndex);
+  loadHourlyTemp(weather, startIndex);
 }
 
 searchBtn.addEventListener("click", (e) => {
@@ -394,6 +469,7 @@ searchBtn.addEventListener("click", (e) => {
 });
 
 async function searchLocation(query) {
+  showLoading();
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&addressdetails=1`,
@@ -427,6 +503,8 @@ async function searchLocation(query) {
     console.error("Error fetching weather data:", error.message);
     main.innerText = "No Search Result Found!!";
     main.className = "text-white mt-14";
+  } finally {
+    hideLoading();
   }
 }
 
