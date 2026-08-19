@@ -173,6 +173,7 @@ switchBtn.addEventListener("click", () => {
 });
 
 async function getGeoData() {
+  showLoading();
   const defaultLocation = "Berlin, Germany";
   const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(defaultLocation)}&format=jsonv2&addressdetails=1`;
   try {
@@ -207,6 +208,8 @@ async function getGeoData() {
     await getWeatherData(lat, lon, locationAddress);
   } catch (error) {
     console.error(error.message);
+    hideLoading();
+  } finally {
     hideLoading();
   }
 }
@@ -390,7 +393,7 @@ function loadHourlyTemp(weather, startIndex = 0) {
   console.log(weather);
 
   let hourlyTemp = weather.hourly.temperature_2m;
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 7; i++) {
     const dataIndex = startIndex + i * 3;
     const tempObj = Math.round(hourlyTemp[dataIndex]);
     const temp = document.getElementById(`temp_${i + 1}`);
@@ -403,7 +406,7 @@ function loadHourlyTemp(weather, startIndex = 0) {
 function loadHourlyForecast(weather, startIndex = 0) {
   console.log(weather);
   let hours = weather.hourly.time;
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 7; i++) {
     const dataIndex = startIndex + i * 3;
     const dateObj = new Date(hours[dataIndex]);
     const hr = dateObj.toLocaleTimeString("en-US", {
@@ -458,6 +461,7 @@ function hourlyForecastDaySelector(weather, day) {
 }
 
 searchBtn.addEventListener("click", (e) => {
+  showLoading();
   e.preventDefault();
   const searchInput = document.getElementById("search-input");
   const query = searchInput.value.trim();
@@ -469,7 +473,6 @@ searchBtn.addEventListener("click", (e) => {
 });
 
 async function searchLocation(query) {
-  showLoading();
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&addressdetails=1`,
@@ -507,5 +510,4 @@ async function searchLocation(query) {
     hideLoading();
   }
 }
-
 getGeoData();
